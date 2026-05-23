@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temple Escape - Endless Runner</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: none;
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #ffd700;
+            text-shadow: 2px 2px 4px #000;
+        }
+        .screen {
+            display: none;
+            pointer-events: auto;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 40px;
+            border-radius: 20px;
+            border: 4px solid #ffd700;
+            max-width: 80%;
+        }
+        .screen.active {
+            display: block;
+        }
+        h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ffd700;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+        }
+        .btn {
+            background: #ffd700;
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 10px;
+            margin-top: 20px;
+            transition: transform 0.2s, background 0.2s;
+            text-transform: uppercase;
+        }
+        .btn:hover {
+            transform: scale(1.1);
+            background: #fff;
+        }
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            pointer-events: none;
+            color: #ffd700;
+        }
+        #loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #1a0f00;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        #loading-bar-container {
+            width: 300px;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #ffd700;
+        }
+        #loading-bar {
+            width: 0%;
+            height: 100%;
+            background: #ffd700;
+            transition: width 0.3s;
+        }
+        #mobile-controls {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            display: none;
+            justify-content: space-around;
+            pointer-events: none;
+        }
+        .mobile-btn {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 215, 0, 0.4);
+            border: 3px solid #ffd700;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 32px;
+            color: #fff;
+            pointer-events: auto;
+        }
+        #mobile-controls.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading-screen">
+        <div style="text-align: center;">
+            <h2 style="color: #ffd700; margin-bottom: 20px;">ENTERING TEMPLE...</h2>
+            <div id="loading-bar-container">
+                <div id="loading-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="start-screen" class="screen active">
+            <h1>TEMPLE ESCAPE</h1>
+            <p>Steal the artifact and survive the collapse!</p>
+            <div style="margin: 20px 0; text-align: left; display: inline-block;">
+                <p>⌨️ <b>PC:</b> SPACE/UP to Jump, DOWN to Slide</p>
+                <p>📱 <b>Mobile:</b> Use On-Screen Buttons</p>
+            </div>
+            <br>
+            <button id="start-btn" class="btn">START RUN</button>
+        </div>
+
+        <div id="game-over-screen" class="screen">
+            <h1>CAUGHT!</h1>
+            <p id="final-score">Distance: 0m | Artifacts: 0</p>
+            <button id="restart-btn" class="btn">RETRY</button>
+        </div>
+
+        <div id="hud" style="display: none;">
+            <div>Distance: <span id="distance-val">0</span>m</div>
+            <div>Artifacts: <span id="artifacts-val">0</span></div>
+        </div>
+    </div>
+
+    <div id="mobile-controls">
+        <div id="jump-btn" class="mobile-btn">▲</div>
+        <div id="slide-btn" class="mobile-btn">▼</div>
+    </div>
+
+    <canvas id="game-container"></canvas>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.150.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.150.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Asset URLs
+        const ASSETS = {
+            sky: 'https://static.seeles.ai/media/game_asset/assets_347d7444_9069_4e27_b64b_30734a2117da_1775913112028064286.jpg',
+            ruins_far: 'https://static.seeles.ai/media/game_asset/assets_985b19e6_9e6d_4d03_989b_a9589c8dfda5_1775913158780741589.png',
+            ruins_near: 'https://static.seeles.ai/media/game_asset/assets_765095b1_b812_483e_befd_31210ccb2f62_1775913128558172078.png',
+            ground: 'https://static.seeles.ai/media/game_asset/assets_d7532009_3f68_4707_adb4_95332d345a74_1775913111246799942.jpg',
+            player_base: 'https://static.seeles.ai/media/game_asset/assets_130e7fc4_dcd8_4fdd_a80d_701d54b3cc18_1775913130586815965.png',
+            player_sprite_json: 'https://static.seeles.ai/media/game_asset/assets_f43f870c_3dbe_46ca_b666_5f642ae4684d_1775913264704507994.json',
+            rock: 'https://static.seeles.ai/media/game_asset/assets_38e5f8c1_d4ed_4aab_b8be_ead7c37f4885_1775913193333204405.png',
+            spike: 'https://static.seeles.ai/media/game_asset/assets_8fc87301_65e0_4581_8f76_62799cc64994_1775913192331833114.png',
+            trap_pillar: 'https://static.seeles.ai/media/game_asset/assets_45805f38_03eb_46b7_bc0c_b6c4d63eb769_1775913208761937538.png',
+            artifact: 'https://static.seeles.ai/media/game_asset/assets_5ecb94ff_caf9_4b55_b49f_f1098fafb516_1775913210317082056.png',
+            bgm: 'https://static.seeles.ai/data/asset/export/0fc6d9b5-7da6-487d-961e-1bc09e879b26/129782/bgm_3bee6888-327c-4c4a-9b97-0946783f19e3.mp3',
+            sfx_jump: 'https://static.seeles.ai/data/asset/export/80a8600c-f7fa-42e3-90f6-0c7a91d431a4/174244/sfx_07226762-c4a0-4455-83a5-98e5596b0141.mp3',
+            sfx_collect: 'https://static.seeles.ai/data/asset/export/279f5ec4-17d2-4ca1-97c2-cc17360c7c5c/171728/sfx_11ec4f09-9752-462a-ab93-a6fe2f1d4469.mp3',
+            sfx_collision: 'https://static.seeles.ai/data/asset/export/742b8c5f-5ba2-4577-8166-d9f579fa29b8/173537/sfx_69fcd682-6cd0-4c5d-a1d2-af8be8aa2f4b.mp3'
+        };
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('game-container');
+                this.width = window.innerWidth;
+                this.height = window.innerHeight;
+                this.aspect = this.width / this.height;
+                this.frustumHeight = 10;
+                this.frustumWidth = this.frustumHeight * this.aspect;
+
+                this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+                this.renderer.setSize(this.width, this.height);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.OrthographicCamera(
+                    -this.frustumWidth / 2, this.frustumWidth / 2,
+                    this.frustumHeight / 2, -this.frustumHeight / 2,
+                    0.1, 1000
+                );
+                this.camera.position.z = 10;
+                this.camera.name = 'main_camera';
+
+                this.clock = new THREE.Clock();
+                this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                
+                this.state = 'START'; // START, INTRO, PLAYING, GAMEOVER
+                this.gameSpeed = 5;
+                this.distance = 0;
+                this.artifacts = 0;
+                this.textures = {};
+                this.sounds = {};
+                this.player = null;
+                this.background = null;
+                this.obstacles = [];
+                this.collectibles = [];
+                this.spawnTimer = 0;
+                this.difficultyTimer = 0;
+
+                this.initUI();
+                this.loadAssets();
+            }
+
+            initUI() {
+                document.getElementById('start-btn').addEventListener('click', () => this.startIntro());
+                document.getElementById('restart-btn').addEventListener('click', () => this.resetGame());
+                
+                if (this.isMobile) {
+                    document.getElementById('mobile-controls').classList.add('active');
+                    document.getElementById('jump-btn').addEventListener('touchstart', (e) => { e.preventDefault(); if(this.player) this.player.jump(); });
+                    document.getElementById('slide-btn').addEventListener('touchstart', (e) => { e.preventDefault(); if(this.player) this.player.slide(true); });
+                    document.getElementById('slide-btn').addEventListener('touchend', (e) => { e.preventDefault(); if(this.player) this.player.slide(false); });
+                }
+
+                window.addEventListener('keydown', (e) => {
+                    if (this.state !== 'PLAYING' && this.state !== 'INTRO') return;
+                    if (e.code === 'Space' || e.code === 'ArrowUp') {
+                        this.player.jump();
+                    }
+                    if (e.code === 'ArrowDown') {
+                        this.player.slide(true);
+                    }
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    if (e.code === 'ArrowDown') {
+                        this.player.slide(false);
+                    }
+                });
+
+                window.addEventListener('resize', () => {
+                    this.width = window.innerWidth;
+                    this.height = window.innerHeight;
+                    this.aspect = this.width / this.height;
+                    this.frustumWidth = this.frustumHeight * this.aspect;
+                    
+                    this.camera.left = -this.frustumWidth / 2;
+                    this.camera.right = this.frustumWidth / 2;
+                    this.camera.top = this.frustumHeight / 2;
+                    this.camera.bottom = -this.frustumHeight / 2;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(this.width, this.height);
+                });
+            }
+
+            async loadAssets() {
+                const loader = new THREE.TextureLoader();
+                const total = Object.keys(ASSETS).length;
+                let loaded = 0;
+
+                const updateProgress = () => {
+                    loaded++;
+                    document.getElementById('loading-bar').style.width = `${(loaded / total) * 100}%`;
+                };
+
+                for (const [key, url] of Object.entries(ASSETS)) {
+                    if (url.endsWith('.mp3')) {
+                        const audio = new Audio(url);
+                        audio.load();
+                        this.sounds[key] = audio;
+                        updateProgress();
+                    } else if (url.endsWith('.json')) {
+                        const response = await fetch(url);
+                        const data = await response.json();
+                        const spriteSheetUrl = data.meta.image;
+                        const spriteTexture = await loader.loadAsync(spriteSheetUrl);
+                        
+                        // Convert frames object to array and sort by key name (restored_0, restored_1, etc.)
+                        const frameKeys = Object.keys(data.frames).sort((a, b) => {
+                            const numA = parseInt(a.match(/\d+/)[0]);
+                            const numB = parseInt(b.match(/\d+/)[0]);
+                            return numA - numB;
+                        });
+                        const frameArray = frameKeys.map(key => data.frames[key].frame);
+                        
+                        this.textures[key] = { 
+                            texture: spriteTexture, 
+                            data: { frames: frameArray } 
+                        };
+                        updateProgress();
+                    } else {
+                        const tex = await loader.loadAsync(url);
+                        this.textures[key] = tex;
+                        updateProgress();
+                    }
+                }
+
+                document.getElementById('loading-screen').style.display = 'none';
+                this.initScene();
+            }
+
+            initScene() {
+                // Background
+                this.background = new Background(this);
+                
+                // Player
+                this.player = new Player(this);
+                this.scene.add(this.player.mesh);
+
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+                ambientLight.name = 'ambient_light';
+                this.scene.add(ambientLight);
+
+                const dirLight = new THREE.DirectionalLight(0xffd700, 0.5);
+                dirLight.position.set(5, 5, 5);
+                dirLight.name = 'directional_light';
+                this.scene.add(dirLight);
+
+                this.animate();
+            }
+
+            startIntro() {
+                this.state = 'INTRO';
+                document.getElementById('start-screen').classList.remove('active');
+
+                this.player.mesh.position.set(0, -3.5, 0);
+                this.player.setState('IDLE');
+
+                const artifact = new THREE.Mesh(
+                    new THREE.PlaneGeometry(0.8, 0.8),
+                    new THREE.MeshBasicMaterial({ map: this.textures.artifact, transparent: true })
+                );
+                artifact.name = 'intro_artifact';
+                artifact.position.set(1, -3.5, 0);
+                this.scene.add(artifact);
+
+                setTimeout(() => {
+                    artifact.position.y += 0.5; 
+                    this.playSound('sfx_collect');
+                }, 1000);
+
+                setTimeout(() => {
+                    this.scene.remove(artifact);
+                    this.state = 'PLAYING';
+                    document.getElementById('hud').style.display = 'flex';
+                    this.playSound('bgm', true);
+                    this.player.setState('RUNNING');
+                    // Shake effect to simulate collapse
+                    this.shakeCamera(1);
+                }, 2000);
+            }
+
+            resetGame() {
+                this.state = 'PLAYING';
+                this.gameSpeed = 5;
+                this.distance = 0;
+                this.artifacts = 0;
+                this.spawnTimer = 0;
+                this.difficultyTimer = 0;
+
+                // Clear obstacles
+                this.obstacles.forEach(o => this.scene.remove(o.mesh));
+                this.obstacles = [];
+                this.collectibles.forEach(c => this.scene.remove(c.mesh));
+                this.collectibles = [];
+
+                this.player.reset();
+                document.getElementById('game-over-screen').classList.remove('active');
+                document.getElementById('hud').style.display = 'flex';
+                this.playSound('bgm', true);
+            }
+
+            gameOver() {
+                this.state = 'GAMEOVER';
+                this.playSound('sfx_collision');
+                if (this.sounds.bgm) this.sounds.bgm.pause();
+                
+                document.getElementById('game-over-screen').classList.add('active');
+                document.getElementById('final-score').innerText = `Distance: ${Math.floor(this.distance)}m | Artifacts: ${this.artifacts}`;
+                document.getElementById('hud').style.display = 'none';
+                
+                this.shakeCamera(2);
+            }
+
+            playSound(key, loop = false) {
+                const s = this.sounds[key];
+                if (s) {
+                    s.currentTime = 0;
+                    s.loop = loop;
+                    s.play().catch(e => console.log("Audio play blocked", e));
+                }
+            }
+
+            shakeCamera(intensity) {
+                const originalPos = this.camera.position.clone();
+                const duration = 0.5;
+                let elapsed = 0;
+
+                const shake = () => {
+                    if (elapsed < duration) {
+                        this.camera.position.x = originalPos.x + (Math.random() - 0.5) * intensity;
+                        this.camera.position.y = originalPos.y + (Math.random() - 0.5) * intensity;
+                        elapsed += 1/60;
+                        requestAnimationFrame(shake);
+                    } else {
+                        this.camera.position.copy(originalPos);
+                    }
+                };
+                shake();
+            }
+
+            spawnObstacle() {
+                const types = ['rock', 'spike', 'trap_pillar'];
+                const type = types[Math.floor(Math.random() * types.length)];
+                const obstacle = new Obstacle(this, type);
+                this.obstacles.push(obstacle);
+                this.scene.add(obstacle.mesh);
+            }
+
+            spawnCollectible() {
+                const collectible = new Collectible(this);
+                this.collectibles.push(collectible);
+                this.scene.add(collectible.mesh);
+            }
+
+            update(dt) {
+                if (this.state !== 'PLAYING') {
+                    if (this.player) this.player.update(dt);
+                    if (this.background) this.background.update(dt, 0);
+                    return;
+                }
+
+                this.distance += this.gameSpeed * dt;
+                this.difficultyTimer += dt;
+                if (this.difficultyTimer > 10) {
+                    this.gameSpeed += 0.5;
+                    this.difficultyTimer = 0;
+                }
+
+                document.getElementById('distance-val').innerText = Math.floor(this.distance);
+                document.getElementById('artifacts-val').innerText = this.artifacts;
+
+                this.player.update(dt);
+                this.background.update(dt, this.gameSpeed);
+
+                // Spawning
+                this.spawnTimer += dt;
+                if (this.spawnTimer > 1.5 - (this.gameSpeed * 0.05)) {
+                    if (Math.random() > 0.3) this.spawnObstacle();
+                    else this.spawnCollectible();
+                    this.spawnTimer = 0;
+                }
+
+                // Update Obstacles
+                for (let i = this.obstacles.length - 1; i >= 0; i--) {
+                    const obs = this.obstacles[i];
+                    obs.update(dt, this.gameSpeed);
+                    
+                    if (obs.checkCollision(this.player)) {
+                        this.gameOver();
+                        break;
+                    }
+
+                    if (obs.mesh.position.x < -this.frustumWidth) {
+                        this.scene.remove(obs.mesh);
+                        this.obstacles.splice(i, 1);
+                    }
+                }
+
+                // Update Collectibles
+                for (let i = this.collectibles.length - 1; i >= 0; i--) {
+                    const col = this.collectibles[i];
+                    col.update(dt, this.gameSpeed);
+                    
+                    if (col.checkCollision(this.player)) {
+                        this.artifacts++;
+                        this.playSound('sfx_collect');
+                        this.scene.remove(col.mesh);
+                        this.collectibles.splice(i, 1);
+                        continue;
+                    }
+
+                    if (col.mesh.position.x < -this.frustumWidth) {
+                        this.scene.remove(col.mesh);
+                        this.collectibles.splice(i, 1);
+                    }
+                }
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                const dt = this.clock.getDelta();
+                this.update(dt);
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        class Player {
+            constructor(game) {
+                this.game = game;
+                const geometry = new THREE.PlaneGeometry(1.2, 1.2);
+                this.material = new THREE.MeshBasicMaterial({ 
+                    map: game.textures.player_base, 
+                    transparent: true,
+                    side: THREE.DoubleSide
+                });
+                this.mesh = new THREE.Mesh(geometry, this.material);
+                this.mesh.name = 'player';
+                this.mesh.position.set(-3, -3.5, 1);
+
+                this.state = 'RUNNING'; // RUNNING, JUMPING, SLIDING, IDLE
+                this.velocity = new THREE.Vector2(0, 0);
+                this.gravity = -25;
+                this.jumpForce = 10;
+                this.groundY = -3.5;
+                this.isGrounded = true;
+
+                // Sprite animation setup
+                this.spriteData = game.textures.player_sprite_json;
+                if (this.spriteData) {
+                    this.material.map = this.spriteData.texture;
+                    this.frameIndex = 0;
+                    this.frameTimer = 0;
+                    this.frameDuration = 0.1;
+                    this.frames = this.spriteData.data.frames;
+                    this.updateUVs();
+                }
+            }
+
+            updateUVs() {
+                if (!this.frames) return;
+                const frame = this.frames[this.frameIndex];
+                const tex = this.material.map;
+                const width = tex.image.width;
+                const height = tex.image.height;
+
+                const u = frame.x / width;
+                const v = 1 - (frame.y + frame.h) / height;
+                const uw = frame.w / width;
+                const vh = frame.h / height;
+
+                this.material.map.repeat.set(uw, vh);
+                this.material.map.offset.set(u, v);
+            }
+
+            setState(state) {
+                this.state = state;
+                if (state === 'SLIDING') {
+                    this.mesh.scale.set(1.2, 0.6, 1);
+                    this.mesh.position.y = this.groundY - 0.3;
+                } else {
+                    this.mesh.scale.set(1, 1, 1);
+                    if (this.isGrounded) this.mesh.position.y = this.groundY;
+                }
+            }
+
+            jump() {
+                if (this.isGrounded) {
+                    this.velocity.y = this.jumpForce;
+                    this.isGrounded = false;
+                    this.setState('JUMPING');
+                    this.game.playSound('sfx_jump');
+                }
+            }
+
+            slide(isSliding) {
+                if (this.isGrounded) {
+                    if (isSliding) this.setState('SLIDING');
+                    else this.setState('RUNNING');
+                }
+            }
+
+            reset() {
+                this.mesh.position.set(-3, this.groundY, 1);
+                this.velocity.set(0, 0);
+                this.isGrounded = true;
+                this.setState('RUNNING');
+            }
+
+            update(dt) {
+                // Animation
+                if (this.state === 'RUNNING' && this.frames) {
+                    this.frameTimer += dt;
+                    if (this.frameTimer > this.frameDuration) {
+                        this.frameIndex = (this.frameIndex + 1) % this.frames.length;
+                        this.updateUVs();
+                        this.frameTimer = 0;
+                    }
+                }
+
+                // Physics
+                if (!this.isGrounded) {
+                    this.velocity.y += this.gravity * dt;
+                    this.mesh.position.y += this.velocity.y * dt;
+
+                    if (this.mesh.position.y <= this.groundY) {
+                        this.mesh.position.y = this.groundY;
+                        this.velocity.y = 0;
+                        this.isGrounded = true;
+                        this.setState('RUNNING');
+                    }
+                }
+            }
+        }
+
+        class Background {
+            constructor(game) {
+                this.game = game;
+                this.layers = [];
+                
+                const layerConfigs = [
+                    { texture: game.textures.sky, speed: 0.1, z: -5, scale: 1 },
+                    { texture: game.textures.ruins_far, speed: 0.3, z: -4, scale: 1 },
+                    { texture: game.textures.ruins_near, speed: 0.7, z: -3, scale: 1.2 },
+                    { texture: game.textures.ground, speed: 1.0, z: -2, scale: 1, pos: -4.5, height: 2 }
+                ];
+
+                layerConfigs.forEach((config, i) => {
+                    const planeGeom = new THREE.PlaneGeometry(game.frustumWidth * 2, config.height || game.frustumHeight);
+                    const mat = new THREE.MeshBasicMaterial({ 
+                        map: config.texture, 
+                        transparent: true 
+                    });
+                    
+                    mat.map.wrapS = THREE.RepeatWrapping;
+                    mat.map.repeat.x = 2;
+
+                    const mesh = new THREE.Mesh(planeGeom, mat);
+                    mesh.name = `bg_layer_${i}`;
+                    mesh.position.z = config.z;
+                    mesh.position.y = config.pos || 0;
+                    game.scene.add(mesh);
+                    this.layers.push({ mesh, speed: config.speed });
+                });
+            }
+
+            update(dt, gameSpeed) {
+                this.layers.forEach(layer => {
+                    layer.mesh.material.map.offset.x += layer.speed * gameSpeed * 0.01 * dt;
+                });
+            }
+        }
+
+        class Obstacle {
+            constructor(game, type) {
+                this.game = game;
+                this.type = type;
+                let texture = game.textures.rock;
+                let size = 1;
+                let y = -3.7;
+
+                if (type === 'spike') {
+                    texture = game.textures.spike;
+                    size = 0.8;
+                } else if (type === 'trap_pillar') {
+                    texture = game.textures.trap_pillar;
+                    size = 1.5;
+                    y = -2.5; 
+                }
+
+                const geometry = new THREE.PlaneGeometry(size, size);
+                const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.name = `obstacle_${type}_${Date.now()}`;
+                this.mesh.position.set(game.frustumWidth, y, 0.5);
+                
+                this.radius = size * 0.4;
+            }
+
+            update(dt, gameSpeed) {
+                this.mesh.position.x -= gameSpeed * dt;
+                
+                if (this.type === 'trap_pillar' && this.mesh.position.x < 2) {
+                    this.mesh.position.y -= 10 * dt;
+                    if (this.mesh.position.y < -3.5) this.mesh.position.y = -3.5;
+                }
+            }
+
+            checkCollision(player) {
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+                const minDistance = this.radius + (player.state === 'SLIDING' ? 0.3 : 0.5);
+                return dist < minDistance;
+            }
+        }
+
+        class Collectible {
+            constructor(game) {
+                this.game = game;
+                const geometry = new THREE.PlaneGeometry(0.8, 0.8);
+                const material = new THREE.MeshBasicMaterial({ map: game.textures.artifact, transparent: true });
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.name = `collectible_${Date.now()}`;
+                
+                const y = Math.random() > 0.5 ? -3.5 : -1.5;
+                this.mesh.position.set(game.frustumWidth, y, 0.5);
+                this.radius = 0.4;
+            }
+
+            update(dt, gameSpeed) {
+                this.mesh.position.x -= gameSpeed * dt;
+                this.mesh.position.y += Math.sin(Date.now() * 0.005) * 0.01; 
+            }
+
+            checkCollision(player) {
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+                return dist < (this.radius + 0.5);
+            }
+        }
+
+        // Init Game
+        new Game();
+
+    </script>
+</body>
+</html>
